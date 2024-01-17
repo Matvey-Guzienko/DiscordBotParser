@@ -1,0 +1,17 @@
+[Unit]
+
+Description=Bot launch
+
+[Service]
+
+Type=simple
+
+Restart=always
+
+WorkingDirectory=/home/DiscordBotParser
+
+ExecStart=python3 /home/DiscordBotParser/main.py
+
+[Install]
+
+WantedBy=multi-user.target
