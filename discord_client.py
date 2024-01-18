@@ -1,6 +1,8 @@
 import asyncio
 import io
+import json
 import math
+import time
 from datetime import datetime
 
 import discord
@@ -10,6 +12,26 @@ from pyppeteer import launch
 from config import Config
 from database import Database
 from finviz_api import get_stock_data, login_finviz
+
+browser = None
+try:
+    with open("cookies.json", "r") as file:
+        cookies = json.loads(file.read())
+except:
+    cookies = None
+
+list_cooldown = {}
+
+
+async def cooldown(id: int, user_time: int = 3, name: str = None):
+    key = f"{id}_{name if name else ''}"
+
+    if key in list_cooldown and time.time() - list_cooldown[key] < user_time:
+        times = abs(int((time.time() - list_cooldown[key]) - user_time))
+        return times
+    else:
+        list_cooldown[key] = time.time()
+        return True
 
 
 class DiscordClient(Bot):
@@ -33,6 +55,15 @@ class DiscordClient(Bot):
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
         print("Synced commands for the guild.")
+        global browser
+        if not browser:
+            browser = await launch(headless=True)
+            page = await browser.newPage()
+            if cookies:
+                await page.setCookie(*cookies)
+                await page.close()
+            else:
+                await browser.close()
 
     def setup_commands(self):
         @self.tree.command(name="add-parse-channel")
@@ -154,18 +185,29 @@ class DiscordClient(Bot):
         @self.tree.command(name="future")
         async def future(interaction: discord.Interaction, symbol: str):
             await interaction.response.defer()
-            browser = await launch()
+            check_cooldown = await cooldown(
+                id=interaction.user.id, user_time=10, name="tradingview"
+            )
+            if check_cooldown != True:
+                return await interaction.followup.send(
+                    f"Просмотр будет доступен через {check_cooldown}с."
+                )
+            global browser
             page = await browser.newPage()
             await page.setViewport({"width": 1920, "height": 1080})
+            await page.setCookie(*cookies)
             await page.goto(
-                f"https://www.tradingview.com/chart/?symbol={symbol}&interval=60"
+                f"https://www.tradingview.com/chart/?symbol={symbol}&interval=60",
+                {"timeout": 600000},
             )
-            element = await page.querySelector(".chart-container-border")
+            await asyncio.sleep(3)
+            element = await page.waitForSelector(".chart-container-border")
             box = await element.boundingBox()
             chart_screenshot = await page.screenshot({"clip": box})
             buffer = io.BytesIO(chart_screenshot)
             buffer.seek(0)
-            await browser.close()
             await interaction.followup.send(
                 file=discord.File(buffer, filename="chart.png")
             )
+            buffer.close()
+            await page.close()

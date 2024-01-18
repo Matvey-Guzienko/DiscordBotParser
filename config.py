@@ -2,7 +2,6 @@ from os import getenv
 from typing import Final
 
 
-
 class Config:
     BOT_TOKEN: Final = getenv("BOT_TOKEN")
     SELFBOT_TOKEN: Final = getenv("SELFBOT_TOKEN")
